@@ -385,7 +385,7 @@ const App: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => performPull(10, 11)}
+                  onClick={() => performPull(10, 10)}
                   disabled={gameState.draws < 10 || isPulling}
                   className="flex-1 relative group overflow-hidden bg-gradient-to-br from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-500/30 rounded-xl p-4 transition-all shadow-lg shadow-purple-900/20 active:scale-95"
                 >
@@ -393,32 +393,33 @@ const App: React.FC = () => {
                   <div className="relative flex flex-col items-center">
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-lg glow-gold text-yellow-100">Summon x10</span>
-                      <span className="text-[10px] bg-yellow-500 text-black font-black px-1 rounded ml-1">+1</span>
                     </div>
                     <span className="text-xs text-yellow-300 mt-1">Cost: 10 Draws</span>
                   </div>
                 </button>
              </div>
 
-             {/* New Toggle Switch UI */}
-             <div className="mt-8 flex items-center justify-center gap-3 z-20">
-                <span className={`text-xs font-bold uppercase tracking-wider transition-colors ${!skipAnimation ? 'text-white' : 'text-gray-500'}`}>
-                  Slow
-                </span>
-                
-                <button 
-                  onClick={() => setSkipAnimation(!skipAnimation)}
-                  className={`relative w-14 h-7 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50 ${skipAnimation ? 'bg-purple-600' : 'bg-gray-700'}`}
-                  aria-label="Toggle animation speed"
-                >
-                  <div 
-                    className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 cubic-bezier(0.4, 0.0, 0.2, 1) ${skipAnimation ? 'translate-x-7' : 'translate-x-0'}`} 
-                  />
-                </button>
-                
-                <span className={`text-xs font-bold uppercase tracking-wider transition-colors ${skipAnimation ? 'text-white' : 'text-gray-500'}`}>
-                  Fast
-                </span>
+             {/* Checkbox Toggle UI */}
+             <div 
+               className="flex items-center gap-2 group cursor-pointer select-none mt-6 z-20"
+               onClick={() => setSkipAnimation(!skipAnimation)}
+             >
+               <div className="relative flex items-center cursor-pointer">
+                 <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={skipAnimation} 
+                    readOnly 
+                 />
+                 <div className="w-5 h-5 bg-[#1a102e] border border-blue-400/50 rounded flex items-center justify-center transition-all duration-200 peer-checked:bg-blue-500 peer-checked:border-blue-500 shadow-[0_0_10px_rgba(96,165,250,0.2)]">
+                   <svg className="hidden peer-checked:block w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                   </svg>
+                 </div>
+               </div>
+               <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">
+                 Skip Animations
+               </span>
              </div>
           </div>
 
