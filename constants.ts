@@ -1,3 +1,4 @@
+
 import { Rank, Buff, Rarity } from './types';
 
 export const BASE_FREE_DRAW_INTERVAL = 60; // seconds
@@ -23,8 +24,8 @@ export const AVAILABLE_BUFFS: Buff[] = [
   {
     id: 'luck_boost',
     name: 'Fortune\'s Favor',
-    description: 'Increases chance of Rare and Legendary drops by 1.5x for 2 minutes.',
-    durationSeconds: 120,
+    description: 'Increases EV to 1.1 (More wins) for 30 seconds.',
+    durationSeconds: 30,
     cost: 50,
     icon: '✨',
     type: 'LUCK'
@@ -41,8 +42,8 @@ export const AVAILABLE_BUFFS: Buff[] = [
   {
     id: 'double_reward',
     name: 'Double Down',
-    description: '10% chance to double any positive draw reward for 60 seconds.',
-    durationSeconds: 60,
+    description: '10% chance to double any positive draw reward for 30 seconds.',
+    durationSeconds: 30,
     cost: 30,
     icon: '🎲',
     type: 'DOUBLE'
@@ -50,8 +51,9 @@ export const AVAILABLE_BUFFS: Buff[] = [
   {
     id: 'streak_shield',
     name: 'Safety Net',
-    description: 'Converts a +0 result into a +1 (once per minute) for 2 minutes.',
-    durationSeconds: 120,
+    description: 'Guarantees at least 1 draw return for the next 5 spins.',
+    durationSeconds: 0, // Charge based
+    charges: 5,
     cost: 25,
     icon: '🛡️',
     type: 'SHIELD'

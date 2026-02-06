@@ -1,3 +1,4 @@
+
 export enum Rarity {
   COMMON = 'COMMON', // +0, +1, +3
   RARE = 'RARE',     // +5
@@ -19,6 +20,7 @@ export interface Buff {
   description: string;
   durationSeconds: number; // 0 if permanent (like upgrades)
   expiresAt?: number; // timestamp
+  charges?: number; // Number of uses (optional)
   cost: number;
   icon: string;
   type: 'LUCK' | 'SPEED' | 'DOUBLE' | 'SHIELD';

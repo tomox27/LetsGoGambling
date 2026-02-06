@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { BASE_FREE_DRAW_INTERVAL, MIN_FREE_DRAW_INTERVAL, RANKS, AVAILABLE_BUFFS } from './constants';
 import { GameState, DrawResult, Rarity, Buff, Rank } from './types';
 import { HistoryLog } from './components/HistoryLog';
@@ -19,6 +20,27 @@ const INITIAL_STATE: GameState = {
 
 type AnimationState = 'IDLE' | 'COMMON' | 'RARE' | 'LEGENDARY';
 
+// --- Math Engine (Integrated here for access to constants if needed, though simpler to keep local) ---
+// 0.95 means for every 100 draws spent, player gets back 95 on average.
+const BASE_TARGET_EV = 1.0; 
+const RARITY_ALPHA = 1.8; 
+const POSITIVE_REWARDS = [1, 3, 5, 10];
+
+const calculateTable = (targetEV: number, alpha: number) => {
+  const weights = POSITIVE_REWARDS.map(r => 1 / Math.pow(r, alpha));
+  const sumWeights = weights.reduce((a, b) => a + b, 0);
+  const conditionalProbs = weights.map(w => w / sumWeights);
+  const mu = POSITIVE_REWARDS.reduce((sum, r, i) => sum + (r * conditionalProbs[i]), 0);
+  let S = targetEV / mu;
+  if (S > 0.99) S = 0.99; 
+  const pPositive = conditionalProbs.map(q => q * S);
+  const pZero = 1 - S;
+  return [
+    { reward: 0, p: pZero },
+    ...POSITIVE_REWARDS.map((r, i) => ({ reward: r, p: pPositive[i] }))
+  ];
+};
+
 const App: React.FC = () => {
   // --- State ---
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -31,6 +53,16 @@ const App: React.FC = () => {
   const [animationState, setAnimationState] = useState<AnimationState>('IDLE');
   const [summonResults, setSummonResults] = useState<DrawResult[] | null>(null);
   
+  // Calculate Probabilities based on current State
+  const activeEV = useMemo(() => {
+      const hasLuck = gameState.activeBuffs.some(b => b.type === 'LUCK');
+      return hasLuck ? 1.1 : BASE_TARGET_EV;
+  }, [gameState.activeBuffs]);
+
+  const probabilityTable = useMemo(() => {
+      return calculateTable(activeEV, RARITY_ALPHA);
+  }, [activeEV]);
+
   // Persist State
   useEffect(() => {
     localStorage.setItem('drawKingSave', JSON.stringify(gameState));
@@ -38,7 +70,6 @@ const App: React.FC = () => {
 
   // --- Helpers ---
   const getCurrentRank = useCallback((highScore: number): Rank => {
-    // Find the highest threshold less than or equal to high score
     const rank = [...RANKS].reverse().find(r => highScore >= r.threshold);
     return rank || RANKS[0];
   }, []);
@@ -68,9 +99,11 @@ const App: React.FC = () => {
           newLastFree = now;
         }
 
-        // Expire Buffs
+        // Expire Buffs (Time based only)
+        // Charge based buffs are handled in performPull
         const validBuffs = prev.activeBuffs.filter(b => 
-          b.durationSeconds === 0 || (b.expiresAt && b.expiresAt > now)
+          (b.durationSeconds === 0 && (b.charges === undefined || b.charges > 0)) || 
+          (b.durationSeconds > 0 && b.expiresAt && b.expiresAt > now)
         );
 
         return {
@@ -88,72 +121,64 @@ const App: React.FC = () => {
   }, []);
 
   // --- Logic: Gacha Pull ---
-  // Updated to accept cost and pullCount separately for Bonus Draw logic
   const performPull = useCallback((cost: number, pullCount: number) => {
     if (gameState.draws < cost) return;
     if (isPulling) return;
 
     setIsPulling(true);
     
-    // --- 1. Calculate Outcome Immediately ---
+    // --- 1. Calculation ---
     const results: DrawResult[] = [];
-    const hasLuck = gameState.activeBuffs.some(b => b.type === 'LUCK');
     const hasDouble = gameState.activeBuffs.some(b => b.type === 'DOUBLE');
-    const hasShield = gameState.activeBuffs.some(b => b.type === 'SHIELD');
+    
+    // Manage Shield Logic via local copy to track charge consumption in this batch
+    let shieldBuff = gameState.activeBuffs.find(b => b.type === 'SHIELD');
+    let shieldCharges = shieldBuff?.charges || 0;
 
     let earnedDraws = 0;
-    
-    // Base Weights for EV = 1.0
-    // Rewards: {10, 5, 3, 1, 0}
-    // Probabilities: {1%, 4%, 10%, 40%, 45%}
-    let w10 = 1;
-    let w5 = 4;
-    let w3 = 10;
-    let w1 = 40;
-    let w0 = 45;
-
-    // Apply Luck Buff (1.5x to high tier)
-    if (hasLuck) {
-      w10 *= 1.5;
-      w5 *= 1.5;
-      
-      const newHighTotal = w10 + w5; // 7.5
-      const remainingSpace = 100 - newHighTotal; // 92.5
-      const oldLowTotal = 10 + 40 + 45; // 95
-      const reductionFactor = remainingSpace / oldLowTotal;
-
-      w3 *= reductionFactor;
-      w1 *= reductionFactor;
-      w0 *= reductionFactor;
-    }
-
     let maxRarityInBatch: AnimationState = 'COMMON';
 
+    // Create cumulative array for weighted choice
+    const cumulative: { limit: number, reward: number }[] = [];
+    let sum = 0;
+    for(let row of probabilityTable) {
+        sum += row.p;
+        cumulative.push({ limit: sum, reward: row.reward });
+    }
+
     for (let i = 0; i < pullCount; i++) {
-      const rng = Math.random() * 100;
+      const rng = Math.random(); // 0..1
       let amount = 0;
-      let rarity = Rarity.COMMON;
+      
+      for(let c of cumulative) {
+          if(rng < c.limit) {
+              amount = c.reward;
+              break;
+          }
+      }
+      // Safety fallthrough
+      if (amount === 0 && rng >= cumulative[cumulative.length-1].limit) amount = 0; // redundant but explicit
 
-      // Determine raw outcome
-      if (rng < w0) { amount = 0; rarity = Rarity.COMMON; }
-      else if (rng < w0 + w1) { amount = 1; rarity = Rarity.COMMON; }
-      else if (rng < w0 + w1 + w3) { amount = 3; rarity = Rarity.COMMON; }
-      else if (rng < w0 + w1 + w3 + w5) { amount = 5; rarity = Rarity.RARE; }
-      else { amount = 10; rarity = Rarity.LEGENDARY; }
-
-      // Buffs Logic: Shield & Double
       let wasShielded = false;
       let wasDoubled = false;
 
-      // Shield: 25% chance to save a 0 pull (Simulating "once per minute" roughly/simple mechanic)
-      if (amount === 0 && hasShield) {
-          if (Math.random() < 0.25) {
-            amount = 1;
-            wasShielded = true;
+      // New Shield Logic: Guarantee return >= 1 (cost of 1 pull) if charges available
+      if (shieldCharges > 0) {
+          // If amount is 0, make it 1.
+          // If amount is > 0, we still consume a charge because "Safety Net" is active for "next 5 spins"
+          // regardless of outcome (usually how these buffs work to be consistent "charges").
+          // However, the prompt says "Guarantee at least what you spent back".
+          // If I naturally win 10, I spent 1, so I got what I spent back.
+          // Does it consume a charge if I win naturally?
+          // Prompt: "only for 5 spins". This implies charges are consumed on spin regardless of result.
+          if (amount < 1) {
+              amount = 1;
+              wasShielded = true;
           }
+          shieldCharges--;
       }
 
-      // Double: 10% chance
+      // Double Logic
       if (amount > 0 && hasDouble && Math.random() < 0.1) {
         amount *= 2;
         wasDoubled = true;
@@ -161,38 +186,50 @@ const App: React.FC = () => {
 
       earnedDraws += amount;
       
-      // Track Highest Rarity for Animation
+      let rarity = amount >= 10 ? Rarity.LEGENDARY : amount >= 5 ? Rarity.RARE : Rarity.COMMON;
       if (amount >= 10 && maxRarityInBatch !== 'LEGENDARY') maxRarityInBatch = 'LEGENDARY';
       else if (amount >= 5 && maxRarityInBatch !== 'LEGENDARY' && maxRarityInBatch !== 'RARE') maxRarityInBatch = 'RARE';
 
       results.push({
         id: Math.random().toString(36).substr(2, 9),
         amount,
-        rarity: amount >= 10 ? Rarity.LEGENDARY : amount >= 5 ? Rarity.RARE : Rarity.COMMON,
+        rarity,
         timestamp: Date.now(),
         wasDoubled,
         wasShielded
       });
     }
 
-    // --- 2. Set Animation State ---
     setAnimationState(maxRarityInBatch);
 
-    // --- 3. Wait for Animation, then Reveal ---
-    const delay = skipAnimation ? 100 : 1500; // 1.5s animation
+    const delay = skipAnimation ? 100 : 1500;
 
     setTimeout(() => {
       setGameState(prev => {
+        // Update buffs state (decrement charges)
+        const newActiveBuffs = prev.activeBuffs.map(b => {
+             if (b.type === 'SHIELD') {
+                 return { ...b, charges: shieldCharges };
+             }
+             return b;
+        }).filter(b => {
+            // Remove if it was a charge buff and now has 0 charges
+            // Note: We keep time-based buffs even if "charges" logic might be added later, but here specifically handling Shield
+            if (b.type === 'SHIELD' && (b.charges !== undefined && b.charges <= 0)) return false;
+            return true;
+        });
+
         const newDraws = prev.draws - cost + earnedDraws;
         return {
           ...prev,
           draws: newDraws,
           highestDraws: Math.max(prev.highestDraws, newDraws),
           stats: {
-            totalPulls: prev.stats.totalPulls + pullCount, // Stats track actual number of pulls
+            totalPulls: prev.stats.totalPulls + pullCount,
             totalEarned: prev.stats.totalEarned + earnedDraws
           },
-          history: [...results.reverse(), ...prev.history].slice(0, 50)
+          history: [...results.reverse(), ...prev.history].slice(0, 50),
+          activeBuffs: newActiveBuffs
         };
       });
 
@@ -203,7 +240,7 @@ const App: React.FC = () => {
       setAnimationState('IDLE');
 
     }, delay);
-  }, [gameState.draws, gameState.activeBuffs, isPulling, skipAnimation]);
+  }, [gameState.draws, gameState.activeBuffs, isPulling, skipAnimation, probabilityTable]);
 
   // --- Logic: Buy Buff ---
   const buyBuff = (buff: Buff) => {
@@ -221,7 +258,11 @@ const App: React.FC = () => {
         }
       } else {
         const existingIdx = active.findIndex(b => b.id === buff.id);
-        const newBuff = { ...buff, expiresAt: Date.now() + (buff.durationSeconds * 1000) };
+        const newBuff = { 
+            ...buff, 
+            expiresAt: buff.durationSeconds > 0 ? Date.now() + (buff.durationSeconds * 1000) : undefined 
+        };
+        
         if (existingIdx >= 0) {
           active[existingIdx] = newBuff;
         } else {
@@ -336,13 +377,16 @@ const App: React.FC = () => {
             <div className="w-full flex gap-3 mb-6 overflow-x-auto pb-2 custom-scrollbar min-h-[60px]">
               {gameState.activeBuffs.map(buff => {
                  const timeLeft = buff.expiresAt ? Math.ceil((buff.expiresAt - Date.now()) / 1000) : null;
-                 if (timeLeft !== null && timeLeft <= 0) return null;
+                 const isPermanent = buff.durationSeconds === 0;
+                 // Don't hide charge buffs even if time is 0 (since they are perm until used)
+                 if (!isPermanent && timeLeft !== null && timeLeft <= 0) return null;
                  
                  return (
                   <div key={buff.id} className="flex items-center gap-2 bg-purple-900/20 border border-purple-500/30 rounded-full px-4 py-1.5 whitespace-nowrap animate-in fade-in slide-in-from-bottom-2">
                     <span>{buff.icon}</span>
                     <span className="text-sm font-bold text-purple-200">{buff.name}</span>
                     {timeLeft && <span className="text-xs font-mono text-purple-400 w-8">{timeLeft}s</span>}
+                    {buff.charges !== undefined && <span className="text-xs font-mono text-blue-400 font-bold">x{buff.charges}</span>}
                   </div>
                  );
               })}
@@ -361,7 +405,6 @@ const App: React.FC = () => {
              <div className={`relative z-10 w-48 h-48 rounded-full flex items-center justify-center mb-8 transition-all duration-300 ${getOrbStyles()}`}>
                {getOrbContent()}
                
-               {/* Rings - Hide during high intensity shake to reduce noise */}
                {animationState !== 'LEGENDARY' && (
                  <>
                   <div className="absolute inset-0 border-4 border-white/20 rounded-full animate-[spin_10s_linear_infinite]"></div>
