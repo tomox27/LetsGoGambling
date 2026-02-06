@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en" class="dark">
   <head>
@@ -6,14 +7,14 @@
     <title>Draw King</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👑</text></svg>">
     
-    <!-- Tailwind -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- React (UMD Globals) -->
+    <!-- React & ReactDOM (UMD - Global Variables) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- Babel (for compiling JSX in browser) -->
+    <!-- Babel (Compiles JSX/TS in the browser) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <!-- Fonts -->
@@ -81,12 +82,12 @@
       }
       .animate-pulse-blue { animation: pulse-blue 1.2s ease-in-out infinite; }
     </style>
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
   }
 }
 </script>
@@ -95,7 +96,8 @@
   <body>
     <div id="root"></div>
 
-    <!-- Main Logic -->
+    <!-- Load the Logic Script -->
+    <!-- Note: We use type="text/babel" so Babel can compile the JSX/TSX on the fly -->
     <script type="text/babel" data-presets="react,typescript" src="./index.tsx"></script>
   <script type="module" src="/index.tsx"></script>
 </body>
