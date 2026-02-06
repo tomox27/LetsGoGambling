@@ -88,8 +88,9 @@ const App: React.FC = () => {
   }, []);
 
   // --- Logic: Gacha Pull ---
-  const performPull = useCallback((count: number) => {
-    if (gameState.draws < count) return;
+  // Updated to accept cost and pullCount separately for Bonus Draw logic
+  const performPull = useCallback((cost: number, pullCount: number) => {
+    if (gameState.draws < cost) return;
     if (isPulling) return;
 
     setIsPulling(true);
@@ -128,7 +129,7 @@ const App: React.FC = () => {
 
     let maxRarityInBatch: AnimationState = 'COMMON';
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < pullCount; i++) {
       const rng = Math.random() * 100;
       let amount = 0;
       let rarity = Rarity.COMMON;
@@ -182,13 +183,13 @@ const App: React.FC = () => {
 
     setTimeout(() => {
       setGameState(prev => {
-        const newDraws = prev.draws - count + earnedDraws;
+        const newDraws = prev.draws - cost + earnedDraws;
         return {
           ...prev,
           draws: newDraws,
           highestDraws: Math.max(prev.highestDraws, newDraws),
           stats: {
-            totalPulls: prev.stats.totalPulls + count,
+            totalPulls: prev.stats.totalPulls + pullCount, // Stats track actual number of pulls
             totalEarned: prev.stats.totalEarned + earnedDraws
           },
           history: [...results.reverse(), ...prev.history].slice(0, 50)
@@ -301,20 +302,21 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-             {/* Timer */}
-            <div className="relative group">
-              <svg className="w-10 h-10 -rotate-90 transform">
-                 <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="transparent" className="text-gray-800" />
-                 <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="transparent" 
+             {/* Timer - Updated to fit perfectly with viewBox */}
+            <div className="relative group overflow-visible w-10 h-10">
+              <svg className="w-full h-full -rotate-90 drop-shadow-md" viewBox="0 0 44 44">
+                 <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.1)" strokeWidth="4" fill="transparent" />
+                 <circle cx="22" cy="22" r="18" stroke="currentColor" strokeWidth="4" fill="transparent" 
                     className="text-purple-500 transition-all duration-1000 ease-linear"
-                    strokeDasharray={100}
-                    strokeDashoffset={100 - (gameState.timeToNextDraw / getInterval()) * 100} 
+                    strokeDasharray={113.1} // 2 * pi * 18
+                    strokeDashoffset={113.1 - (gameState.timeToNextDraw / getInterval()) * 113.1}
+                    strokeLinecap="round" 
                  />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold">
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold pointer-events-none">
                 {gameState.timeToNextDraw}
               </span>
-              <div className="absolute top-10 right-0 bg-black/90 p-2 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-white/10">
+              <div className="absolute top-10 right-0 bg-black/90 p-2 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-white/10 z-50">
                 Next free draw in {gameState.timeToNextDraw}s
               </div>
             </div>
@@ -329,31 +331,31 @@ const App: React.FC = () => {
         {/* Left: Altar / Main Game */}
         <div className="lg:col-span-8 flex flex-col items-center">
           
-          {/* Active Buffs Bar */}
-          <div className="w-full flex gap-3 mb-6 overflow-x-auto pb-2 custom-scrollbar min-h-[60px]">
-            {gameState.activeBuffs.length === 0 && (
-              <div className="w-full text-center text-sm text-gray-600 border border-dashed border-gray-800 rounded-lg py-2">
-                No active buffs. Visit the Vault.
-              </div>
-            )}
-            {gameState.activeBuffs.map(buff => {
-               const timeLeft = buff.expiresAt ? Math.ceil((buff.expiresAt - Date.now()) / 1000) : null;
-               if (timeLeft !== null && timeLeft <= 0) return null;
-               
-               return (
-                <div key={buff.id} className="flex items-center gap-2 bg-purple-900/20 border border-purple-500/30 rounded-full px-4 py-1.5 whitespace-nowrap animate-in fade-in slide-in-from-bottom-2">
-                  <span>{buff.icon}</span>
-                  <span className="text-sm font-bold text-purple-200">{buff.name}</span>
-                  {timeLeft && <span className="text-xs font-mono text-purple-400 w-8">{timeLeft}s</span>}
-                </div>
-               );
-            })}
-          </div>
+          {/* Active Buffs Bar (Hidden if empty) */}
+          {gameState.activeBuffs.length > 0 && (
+            <div className="w-full flex gap-3 mb-6 overflow-x-auto pb-2 custom-scrollbar min-h-[60px]">
+              {gameState.activeBuffs.map(buff => {
+                 const timeLeft = buff.expiresAt ? Math.ceil((buff.expiresAt - Date.now()) / 1000) : null;
+                 if (timeLeft !== null && timeLeft <= 0) return null;
+                 
+                 return (
+                  <div key={buff.id} className="flex items-center gap-2 bg-purple-900/20 border border-purple-500/30 rounded-full px-4 py-1.5 whitespace-nowrap animate-in fade-in slide-in-from-bottom-2">
+                    <span>{buff.icon}</span>
+                    <span className="text-sm font-bold text-purple-200">{buff.name}</span>
+                    {timeLeft && <span className="text-xs font-mono text-purple-400 w-8">{timeLeft}s</span>}
+                  </div>
+                 );
+              })}
+            </div>
+          )}
 
           {/* Summoning Altar */}
-          <div className="relative w-full max-w-xl aspect-square md:aspect-video bg-black/30 rounded-3xl border border-white/5 flex flex-col items-center justify-center overflow-hidden mb-8 group">
-             {/* Decor */}
-             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent opacity-50"></div>
+          {/* Added overflow-visible and improved padding/sizing logic to prevent cutoffs */}
+          <div className="relative w-full max-w-xl min-h-[420px] bg-black/30 rounded-3xl border border-white/5 flex flex-col items-center justify-center p-10 mb-8 group overflow-visible">
+             {/* Decor (Clipped inside only) */}
+             <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none z-0">
+                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent opacity-50"></div>
+             </div>
              
              {/* The Orb */}
              <div className={`relative z-10 w-48 h-48 rounded-full flex items-center justify-center mb-8 transition-all duration-300 ${getOrbStyles()}`}>
@@ -369,11 +371,11 @@ const App: React.FC = () => {
              </div>
 
              {/* Controls */}
-             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md px-6 z-20">
+             <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md z-20">
                 <button
-                  onClick={() => performPull(1)}
+                  onClick={() => performPull(1, 1)}
                   disabled={gameState.draws < 1 || isPulling}
-                  className="flex-1 relative group overflow-hidden bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all"
+                  className="flex-1 relative group overflow-hidden bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 rounded-xl p-4 transition-all active:scale-95"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-transparent translate-x-[-100%] group-hover:translate-x-100 transition-transform duration-700"></div>
                   <div className="relative flex flex-col items-center">
@@ -383,28 +385,40 @@ const App: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => performPull(10)}
+                  onClick={() => performPull(10, 11)}
                   disabled={gameState.draws < 10 || isPulling}
-                  className="flex-1 relative group overflow-hidden bg-gradient-to-br from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-500/30 rounded-xl p-4 transition-all shadow-lg shadow-purple-900/20"
+                  className="flex-1 relative group overflow-hidden bg-gradient-to-br from-purple-900 to-indigo-900 hover:from-purple-800 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-500/30 rounded-xl p-4 transition-all shadow-lg shadow-purple-900/20 active:scale-95"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/20 to-transparent translate-x-[-100%] group-hover:translate-x-100 transition-transform duration-700"></div>
                   <div className="relative flex flex-col items-center">
-                    <span className="font-bold text-lg glow-gold text-yellow-100">Summon x10</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-lg glow-gold text-yellow-100">Summon x10</span>
+                      <span className="text-[10px] bg-yellow-500 text-black font-black px-1 rounded ml-1">+1</span>
+                    </div>
                     <span className="text-xs text-yellow-300 mt-1">Cost: 10 Draws</span>
                   </div>
                 </button>
              </div>
 
-             <div className="mt-6 flex items-center gap-2 z-20">
-                <label className="flex items-center gap-2 cursor-pointer text-gray-400 hover:text-white transition-colors select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={skipAnimation}
-                    onChange={(e) => setSkipAnimation(e.target.checked)}
-                    className="rounded bg-gray-800 border-gray-600 text-purple-600 focus:ring-purple-500"
+             {/* New Toggle Switch UI */}
+             <div className="mt-8 flex items-center justify-center gap-3 z-20">
+                <span className={`text-xs font-bold uppercase tracking-wider transition-colors ${!skipAnimation ? 'text-white' : 'text-gray-500'}`}>
+                  Slow
+                </span>
+                
+                <button 
+                  onClick={() => setSkipAnimation(!skipAnimation)}
+                  className={`relative w-14 h-7 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50 ${skipAnimation ? 'bg-purple-600' : 'bg-gray-700'}`}
+                  aria-label="Toggle animation speed"
+                >
+                  <div 
+                    className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 cubic-bezier(0.4, 0.0, 0.2, 1) ${skipAnimation ? 'translate-x-7' : 'translate-x-0'}`} 
                   />
-                  <span className="text-sm font-medium">Skip Animation</span>
-                </label>
+                </button>
+                
+                <span className={`text-xs font-bold uppercase tracking-wider transition-colors ${skipAnimation ? 'text-white' : 'text-gray-500'}`}>
+                  Fast
+                </span>
              </div>
           </div>
 
